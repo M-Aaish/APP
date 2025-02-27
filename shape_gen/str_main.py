@@ -182,7 +182,7 @@ def image_generator_app():
             st.warning("Please upload an image first.")
 
 # --------------------------------------------------------------------
-# --- Updated Shape Detector with Recipe Generation Functionality
+# --- Updated Shape Detector with Embedded Recipe Generation Form
 # --------------------------------------------------------------------
 def shape_detector_app():
     st.header("Shape Detector")
@@ -249,16 +249,23 @@ def shape_detector_app():
             col1c, col2c, col3c = st.columns(3)
             for idx, (color, count) in enumerate(grouped_colors):
                 rgb_str = f"RGB: {color} - Count: {count}"
-                color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block;"
+                color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block; cursor:pointer;"
+                # Each color block is clickable; clicking it selects the fixed color for recipe generation.
                 if idx % 3 == 0:
                     with col1c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        if st.button(f"{rgb_str}", key=f"color_btn_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                        st.markdown(f"<div style='{color_box}'></div>", unsafe_allow_html=True)
                 elif idx % 3 == 1:
                     with col2c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        if st.button(f"{rgb_str}", key=f"color_btn_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                        st.markdown(f"<div style='{color_box}'></div>", unsafe_allow_html=True)
                 else:
                     with col3c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        if st.button(f"{rgb_str}", key=f"color_btn_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                        st.markdown(f"<div style='{color_box}'></div>", unsafe_allow_html=True)
             
             is_success, buffer = cv2.imencode(".png", annotated_img)
             if is_success:
@@ -269,26 +276,23 @@ def shape_detector_app():
                     mime="image/png"
                 )
             
-            # NEW FUNCTIONALITY: Recipe Generation from Detected Color
+            # Recipe Generation Section (always visible below the decoded image)
             st.markdown("---")
-            st.subheader("Generate Recipe from a Detected Color")
-            st.write("Click on any of the colors below to generate a recipe for that color:")
-            
-            col1c2, col2c2, col3c2 = st.columns(3)
-            for idx, (color, count) in enumerate(grouped_colors):
-                col = col1c2 if idx % 3 == 0 else col2c2 if idx % 3 == 1 else col3c2
-                if col.button(f"RGB: {color} - Count: {count}", key=f"recipe_color_btn_{idx}"):
-                    st.session_state.selected_recipe_color = color
-            
-            if "selected_recipe_color" in st.session_state and st.session_state.selected_recipe_color is not None:
+            st.subheader("Recipe Generator")
+            if "selected_recipe_color" in st.session_state:
                 fixed_color = st.session_state.selected_recipe_color
-                st.markdown("---")
-                st.subheader("Recipe Generator for Selected Color")
                 st.write("Selected Color:")
                 display_color_block(fixed_color, label="Selected")
-                db_choice = st.selectbox("Select a color database:", list(databases.keys()), key="recipe_db_sd")
-                step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_sd")
-                if st.button("Generate Recipe", key="generate_recipe_sd"):
+            else:
+                st.write("No color selected. Please click on a color from above.")
+                fixed_color = None
+            
+            db_choice = st.selectbox("Select a color database:", list(databases.keys()), key="recipe_db_sd")
+            step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_sd")
+            if st.button("Generate Recipe", key="generate_recipe_sd"):
+                if fixed_color is None:
+                    st.error("No color selected. Please click on a color from above to generate a recipe.")
+                else:
                     selected_db_dict = convert_db_list_to_dict(databases[db_choice])
                     recipes = generate_recipes(fixed_color, selected_db_dict, step=step)
                     if recipes:
