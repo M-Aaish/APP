@@ -191,66 +191,78 @@ def shape_detector_app():
     min_size_det = st.number_input("Enter the minimum size to detect:", min_value=1, value=3)
     max_size_det = st.number_input("Enter the maximum size to detect:", min_value=1, value=10)
     
-    encoded_image = None
+    # Process file upload and store the encoded image in session state.
     if uploaded_file is not None:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         encoded_image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         if encoded_image is None:
             st.error("Error reading the image. Please try another file.")
+        else:
+            st.session_state.encoded_image = encoded_image
+    else:
+        st.session_state.pop("encoded_image", None)
+        st.session_state.pop("decoded_data", None)
+        st.session_state.pop("selected_recipe_color", None)
     
-    # Create two columns for side-by-side display.
     col1, col2 = st.columns(2)
-    
-    if uploaded_file is not None and encoded_image is not None:
+    if "encoded_image" in st.session_state:
         with col1:
-            uploaded_image_rgb = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2RGB)
+            uploaded_image_rgb = cv2.cvtColor(st.session_state.encoded_image, cv2.COLOR_BGR2RGB)
             st.image(uploaded_image_rgb, caption="Uploaded Encoded Image", use_container_width=True)
     
-    if st.button("Decode"):
-        if uploaded_file is not None and encoded_image is not None:
-            shape = shape_option
-            # Detect boundaries based on user size limits.
-            gray = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2GRAY)
-            ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-            detected_boundaries = []
-            if shape == "Triangle":
-                for cnt in contours:
-                    peri = cv2.arcLength(cnt, True)
-                    approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-                    if len(approx) == 3:
-                        tri = approx.reshape(-1, 2)
-                        xs = tri[:, 0]
-                        ys = tri[:, 1]
-                        width = xs.max() - xs.min()
-                        height = ys.max() - ys.min()
-                        if width >= min_size_det and width <= max_size_det and height >= min_size_det and height <= max_size_det:
-                            detected_boundaries.append(tri)
-            elif shape == "Rectangle":
-                for cnt in contours:
-                    x, y, w, h = cv2.boundingRect(cnt)
-                    if w >= min_size_det and w <= max_size_det and h >= min_size_det and h <= max_size_det:
-                        detected_boundaries.append((x, y, w, h))
-            elif shape == "Circle":
-                for cnt in contours:
-                    (x, y), radius = cv2.minEnclosingCircle(cnt)
-                    radius = int(radius)
-                    if radius >= min_size_det and radius <= max_size_det:
-                        detected_boundaries.append((int(x), int(y), radius))
-            # Decode using the detected boundaries.
-            binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=detected_boundaries, max_size=max_size_det, min_size=min_size_det)
-            annotated_image_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+    # If the user clicks Decode or if decoded data already exists, process/display decode result.
+    if st.button("Decode") or ("decoded_data" in st.session_state):
+        if "encoded_image" in st.session_state:
+            # Only perform decode if not already stored.
+            if "decoded_data" not in st.session_state or st.button("Re-decode", key="redecode"):
+                encoded_image = st.session_state.encoded_image
+                shape = shape_option
+                gray = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2GRAY)
+                ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+                detected_boundaries = []
+                if shape == "Triangle":
+                    for cnt in contours:
+                        peri = cv2.arcLength(cnt, True)
+                        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+                        if len(approx) == 3:
+                            tri = approx.reshape(-1, 2)
+                            xs = tri[:, 0]
+                            ys = tri[:, 1]
+                            width = xs.max() - xs.min()
+                            height = ys.max() - ys.min()
+                            if width >= min_size_det and width <= max_size_det and height >= min_size_det and height <= max_size_det:
+                                detected_boundaries.append(tri)
+                elif shape == "Rectangle":
+                    for cnt in contours:
+                        x, y, w, h = cv2.boundingRect(cnt)
+                        if w >= min_size_det and w <= max_size_det and h >= min_size_det and h <= max_size_det:
+                            detected_boundaries.append((x, y, w, h))
+                elif shape == "Circle":
+                    for cnt in contours:
+                        (x, y), radius = cv2.minEnclosingCircle(cnt)
+                        radius = int(radius)
+                        if radius >= min_size_det and radius <= max_size_det:
+                            detected_boundaries.append((int(x), int(y), radius))
+                binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=detected_boundaries, max_size=max_size_det, min_size=min_size_det)
+                annotated_image_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+                grouped_colors = group_similar_colors(rgb_vals, threshold=10)
+                grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
+                st.session_state.decoded_data = {
+                    "annotated_image_rgb": annotated_image_rgb,
+                    "grouped_colors": grouped_colors,
+                    "annotated_img": annotated_img
+                }
+            decoded_data = st.session_state.decoded_data
             with col2:
-                st.image(annotated_image_rgb, caption=f"Decoded Annotated {shape_option} Image", use_container_width=True)
+                st.image(decoded_data["annotated_image_rgb"], caption=f"Decoded Annotated {shape_option} Image", use_container_width=True)
             
-            grouped_colors = group_similar_colors(rgb_vals, threshold=10)
-            grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
             st.subheader("Grouped Colors (Ranked by Count)")
             col1c, col2c, col3c = st.columns(3)
-            for idx, (color, count) in enumerate(grouped_colors):
+            for idx, (color, count) in enumerate(decoded_data["grouped_colors"]):
                 rgb_str = f"RGB: {color} - Count: {count}"
                 color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block; cursor:pointer;"
-                # Each color block is clickable; clicking it selects the fixed color for recipe generation.
+                # Each color is displayed with a button to select it.
                 if idx % 3 == 0:
                     with col1c:
                         if st.button(f"{rgb_str}", key=f"color_btn_{idx}"):
@@ -267,7 +279,7 @@ def shape_detector_app():
                             st.session_state.selected_recipe_color = color
                         st.markdown(f"<div style='{color_box}'></div>", unsafe_allow_html=True)
             
-            is_success, buffer = cv2.imencode(".png", annotated_img)
+            is_success, buffer = cv2.imencode(".png", decoded_data["annotated_img"])
             if is_success:
                 st.download_button(
                     label="Download Decoded Image",
@@ -276,7 +288,7 @@ def shape_detector_app():
                     mime="image/png"
                 )
             
-            # Recipe Generation Section (always visible below the decoded image)
+            # Recipe Generation Section (always visible below the decoded output)
             st.markdown("---")
             st.subheader("Recipe Generator")
             if "selected_recipe_color" in st.session_state:
@@ -284,14 +296,14 @@ def shape_detector_app():
                 st.write("Selected Color:")
                 display_color_block(fixed_color, label="Selected")
             else:
-                st.write("No color selected. Please click on a color from above.")
+                st.write("No color selected. Please click on a color above.")
                 fixed_color = None
             
             db_choice = st.selectbox("Select a color database:", list(databases.keys()), key="recipe_db_sd")
             step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_sd")
             if st.button("Generate Recipe", key="generate_recipe_sd"):
                 if fixed_color is None:
-                    st.error("No color selected. Please click on a color from above to generate a recipe.")
+                    st.error("No color selected. Please click on a color above to generate a recipe.")
                 else:
                     selected_db_dict = convert_db_list_to_dict(databases[db_choice])
                     recipes = generate_recipes(fixed_color, selected_db_dict, step=step)
@@ -324,7 +336,7 @@ def shape_detector_app():
 # --------------------------------------------------------------------
 # --- Functions from painter2.py (Painter App - Recipe Generator and Colors DataBase)
 # --------------------------------------------------------------------
-# Fix: Build an absolute path to color.txt (assuming it is in the same directory as this file)
+# Build an absolute path to color.txt (assuming it is in the same directory as this file)
 BASE_DIR = Path(__file__).parent if '__file__' in globals() else Path.cwd()
 COLOR_DB_FILE = str(BASE_DIR / "color.txt")
 
