@@ -273,22 +273,24 @@ def shape_detector_app():
                     if st.button("Select Color", key=f"select_color_{idx}"):
                         st.session_state.selected_recipe_color = color
 
-    # Recipe generation panel is always visible below.
+    # Recipe generation panel (same logic as in the Recipe Generator mode) is always visible below.
     st.subheader("Generate Recipe for Selected Color")
     if st.session_state.selected_recipe_color is not None:
-        st.write("Selected Color:", rgb_to_hex(*st.session_state.selected_recipe_color))
-        display_color_block(st.session_state.selected_recipe_color, label="Selected")
+        desired_rgb = st.session_state.selected_recipe_color
+        st.write("**Desired Color:**", rgb_to_hex(*desired_rgb))
+        # Display the selected color block.
+        display_color_block(desired_rgb, label="Desired")
     else:
         st.info("No color selected. Click on a color block above to select a color for recipe generation.")
-
-    db_choice = st.selectbox("Select a color database for recipe:", list(databases.keys()), key="recipe_db_select")
+    
+    db_choice = st.selectbox("Select a color database for recipe:", list(databases.keys()), key="recipe_db_select_panel")
     selected_db_dict = convert_db_list_to_dict(databases[db_choice])
-    step_val = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_slider")
-    if st.button("Generate Recipe for Selected Color", key="gen_recipe_for_selected"):
+    step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_slider_panel")
+    if st.button("Generate Recipes", key="generate_recipes_panel"):
         if st.session_state.selected_recipe_color is None:
             st.error("Please select a color from above before generating a recipe.")
         else:
-            recipes = generate_recipes(st.session_state.selected_recipe_color, selected_db_dict, step=step_val)
+            recipes = generate_recipes(st.session_state.selected_recipe_color, selected_db_dict, step=step)
             if recipes:
                 st.write("### Top 3 Paint Recipes")
                 for idx, (recipe, mixed, err) in enumerate(recipes):
