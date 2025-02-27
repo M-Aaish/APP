@@ -279,7 +279,8 @@ def shape_detector_app():
     # Recipe generation panel (using the same logic as in Recipe Generator mode).
     st.subheader("Generate Recipe for Selected Color")
     if st.session_state.selected_recipe_color is not None:
-        desired_rgb = tuple(st.session_state.selected_recipe_color)
+        # Convert the selected color to a tuple of ints (just as in the Recipe Generator mode).
+        desired_rgb = tuple(int(c) for c in st.session_state.selected_recipe_color)
         st.write("**Desired Color:**", rgb_to_hex(*desired_rgb))
         display_color_block(desired_rgb, label="Desired")
     else:
@@ -292,7 +293,6 @@ def shape_detector_app():
         if st.session_state.selected_recipe_color is None:
             st.error("Please select a color from above before generating a recipe.")
         else:
-            # Use the same logic as in the Recipe Generator mode.
             recipes = generate_recipes(desired_rgb, selected_db_dict, step=step)
             if recipes:
                 st.write("### Top 3 Paint Recipes")
