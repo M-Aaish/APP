@@ -19,10 +19,10 @@ from pathlib import Path
 # Set page config for the merged app.
 st.set_page_config(page_title="Merged App", layout="wide")
 
-# --------------------------------------------------------------------
-# --- Functions from the original str_main.py (Image Generator, Shape Detector,
-#     Oil Painting Generator, Colour Merger)
-# --------------------------------------------------------------------
+##############################################################################
+# --- Functions from the original code (Image Generator, Shape Detector,
+#     Oil Painting Generator, Colour Merger, etc.)
+##############################################################################
 
 # Function to calculate the Euclidean distance between two RGB colors
 def color_distance(color1, color2):
@@ -243,36 +243,88 @@ def shape_detector_app():
             grouped_colors = group_similar_colors(rgb_vals, threshold=10)
             grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
             st.subheader("Grouped Colors (Ranked by Count)")
+            # Display colors in three columns with clickable buttons.
             col1c, col2c, col3c = st.columns(3)
             for idx, (color, count) in enumerate(grouped_colors):
                 rgb_str = f"RGB: {color} - Count: {count}"
-                color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block;"
+                # Create a small color block as HTML.
+                color_box = f"<div style='background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; border:1px solid #000;'></div>"
+                # Place the color block and a button in two subcolumns.
                 if idx % 3 == 0:
                     with col1c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        subcol1, subcol2 = st.columns([1, 3])
+                        subcol1.markdown(color_box, unsafe_allow_html=True)
+                        if subcol2.button(rgb_str, key=f"color_{idx}"):
+                            st.session_state.preselected_color = color
+                            st.session_state.app_mode = "Color Recipe"
+                            st.experimental_rerun()
                 elif idx % 3 == 1:
                     with col2c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        subcol1, subcol2 = st.columns([1, 3])
+                        subcol1.markdown(color_box, unsafe_allow_html=True)
+                        if subcol2.button(rgb_str, key=f"color_{idx}"):
+                            st.session_state.preselected_color = color
+                            st.session_state.app_mode = "Color Recipe"
+                            st.experimental_rerun()
                 else:
                     with col3c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
-            
-            is_success, buffer = cv2.imencode(".png", annotated_img)
-            if is_success:
-                st.download_button(
-                    label="Download Decoded Image",
-                    data=buffer.tobytes(),
-                    file_name="decoded_image.png",
-                    mime="image/png"
-                )
+                        subcol1, subcol2 = st.columns([1, 3])
+                        subcol1.markdown(color_box, unsafe_allow_html=True)
+                        if subcol2.button(rgb_str, key=f"color_{idx}"):
+                            st.session_state.preselected_color = color
+                            st.session_state.app_mode = "Color Recipe"
+                            st.experimental_rerun()
         else:
             st.warning("Please upload an image first.")
 
+def painter_recipe_generator():
+    st.title("Painter App - Recipe Generator")
+    st.write("Enter your desired paint color to generate paint recipes using base colors.")
+    db_choice = st.selectbox("Select a color database:", list(databases.keys()))
+    selected_db_dict = convert_db_list_to_dict(databases[db_choice])
+    method = st.radio("Select input method:", ["Color Picker", "RGB Sliders"])
+    if method == "Color Picker":
+        desired_hex = st.color_picker("Pick a color", "#ffffff")
+        desired_rgb = tuple(int(desired_hex[i:i+2], 16) for i in (1, 3, 5))
+    else:
+        st.write("Select RGB values manually:")
+        r = st.slider("Red", 0, 255, 255)
+        g = st.slider("Green", 0, 255, 255)
+        b = st.slider("Blue", 0, 255, 255)
+        desired_rgb = (r, g, b)
+        desired_hex = rgb_to_hex(r, g, b)
+    st.write("**Desired Color:**", desired_hex)
+    display_color_block(desired_rgb, label="Desired")
+    step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5)
+    if st.button("Generate Recipes"):
+        recipes = generate_recipes(desired_rgb, selected_db_dict, step=step)
+        if recipes:
+            st.write("### Top 3 Paint Recipes")
+            for idx, (recipe, mixed, err) in enumerate(recipes):
+                st.write(f"**Recipe {idx+1}:** (Error = {err:.2f})")
+                cols = st.columns(4)
+                with cols[0]:
+                    st.write("Desired:")
+                    display_color_block(desired_rgb, label="Desired")
+                with cols[1]:
+                    st.write("Result:")
+                    display_color_block(mixed, label="Mixed")
+                with cols[2]:
+                    st.write("Composition:")
+                    for name, perc in recipe:
+                        if perc > 0:
+                            base_rgb = tuple(selected_db_dict[name]["rgb"])
+                            st.write(f"- **{name}**: {perc:.1f}%")
+                            display_color_block(base_rgb, label=name)
+                with cols[3]:
+                    st.write("Difference:")
+                    st.write(f"RGB Distance: {err:.2f}")
+        else:
+            st.error("No recipes found.")
 
-# --------------------------------------------------------------------
+##############################################################################
 # --- Functions from painter2.py (Painter App - Recipe Generator and Colors DataBase)
-# --------------------------------------------------------------------
-# Fix: Build an absolute path to color.txt (assuming it is in the same directory as this file)
+##############################################################################
 BASE_DIR = Path(__file__).parent if '__file__' in globals() else Path.cwd()
 COLOR_DB_FILE = str(BASE_DIR / "color.txt")
 
@@ -688,9 +740,52 @@ def painter_colors_database():
     elif st.session_state.subpage == "remove_database":
         show_remove_database_page()
 
-# --------------------------------------------------------------------
-# --- Main Navigation (6 radio buttons)
-# --------------------------------------------------------------------
+##############################################################################
+# --- NEW: Color Recipe Page (for preselected RGB from Shape Detector)
+##############################################################################
+def color_recipe_app():
+    st.title("Color Recipe Generator")
+    # Retrieve the preselected color from session state (default to white if not found)
+    preselected_color = st.session_state.get("preselected_color", [255, 255, 255])
+    st.write(f"Preselected Color: RGB{tuple(preselected_color)}")
+    # Display the color block for the preselected color.
+    color_box_html = f"<div style='background-color: rgb({preselected_color[0]}, {preselected_color[1]}, {preselected_color[2]}); width:200px; height:200px; border:1px solid #000;'></div>"
+    st.markdown(color_box_html, unsafe_allow_html=True)
+    
+    # Allow selection of a database and percentage step (slider between 4 and 10)
+    db_choice = st.selectbox("Select a color database:", list(databases.keys()))
+    step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5)
+    
+    if st.button("Generate Recipes"):
+        selected_db_dict = convert_db_list_to_dict(databases[db_choice])
+        recipes = generate_recipes(tuple(preselected_color), selected_db_dict, step=step)
+        if recipes:
+            st.write("### Top 3 Paint Recipes")
+            for idx, (recipe, mixed, err) in enumerate(recipes):
+                st.write(f"**Recipe {idx+1}:** (Error = {err:.2f})")
+                cols = st.columns(4)
+                with cols[0]:
+                    st.write("Desired:")
+                    display_color_block(tuple(preselected_color), label="Desired")
+                with cols[1]:
+                    st.write("Result:")
+                    display_color_block(mixed, label="Mixed")
+                with cols[2]:
+                    st.write("Composition:")
+                    for name, perc in recipe:
+                        if perc > 0:
+                            base_rgb = tuple(selected_db_dict[name]["rgb"])
+                            st.write(f"- **{name}**: {perc:.1f}%")
+                            display_color_block(base_rgb, label=name)
+                with cols[3]:
+                    st.write("Difference:")
+                    st.write(f"RGB Distance: {err:.2f}")
+        else:
+            st.error("No recipes found.")
+
+##############################################################################
+# --- Main Navigation (Sidebar and Mode Selection)
+##############################################################################
 def main():
     st.sidebar.title("Options")
     
@@ -702,15 +797,15 @@ def main():
             st.warning("Automatic refresh is not supported. Please manually reload your browser.")
     
     app_mode = st.sidebar.radio("Select Mode", [
-    "Image Generator", 
-    "Shape Detector", 
-    "Oil Painting Generator", 
-    "Colour Merger", 
-    "Recipe Generator", 
-    "Colors DataBase",
-    "Foogle Man Repo"  # <-- New page added here
-])
-
+        "Image Generator", 
+        "Shape Detector", 
+        "Oil Painting Generator", 
+        "Colour Merger", 
+        "Recipe Generator", 
+        "Colors DataBase",
+        "Foogle Man Repo",
+        "Color Recipe"  # New mode for the Color Recipe page
+    ])
     
     if app_mode == "Image Generator":
         image_generator_app()
@@ -724,8 +819,10 @@ def main():
         painter_recipe_generator()
     elif app_mode == "Colors DataBase":
         painter_colors_database()
-    elif app_mode == "Foogle Man Repo":  # <-- New condition
-        shape_art_generator_page()    
+    elif app_mode == "Foogle Man Repo":
+        shape_art_generator_page()
+    elif app_mode == "Color Recipe":
+        color_recipe_app()
 
 if __name__ == "__main__":
     main()
