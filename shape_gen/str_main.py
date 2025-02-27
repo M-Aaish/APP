@@ -20,18 +20,15 @@ from pathlib import Path
 st.set_page_config(page_title="Merged App", layout="wide")
 
 ##############################################################################
-# --- Functions from the original code (Image Generator, Shape Detector,
-#     Oil Painting Generator, Colour Merger, etc.)
+# --- Utility Functions (Image Generator, Shape Detector, Oil Painting, etc.)
 ##############################################################################
 
-# Function to calculate the Euclidean distance between two RGB colors
 def color_distance(color1, color2):
     return np.sqrt(np.sum((np.array(color1) - np.array(color2)) ** 2))
 
-# Function to group similar colors and count them
 def group_similar_colors(rgb_vals, threshold=10):
-    grouped_colors = []  # List to store final groups of similar colors
-    counts = []  # List to store counts of similar colors
+    grouped_colors = []  # List to store groups of similar colors
+    counts = []  # List to store counts for each group
 
     for color in rgb_vals:
         found_group = False
@@ -83,8 +80,8 @@ def color_mixing_app():
     st.title("RGB Color Mixing")
     if 'colors' not in st.session_state:
         st.session_state.colors = [
-            {"rgb": [255, 0, 0], "weight": 0.3},  # Default color 1 (Red)
-            {"rgb": [0, 255, 0], "weight": 0.6}   # Default color 2 (Green)
+            {"rgb": [255, 0, 0], "weight": 0.3},  # Red
+            {"rgb": [0, 255, 0], "weight": 0.6}   # Green
         ]
 
     def rgb_to_latent(rgb):
@@ -195,9 +192,7 @@ def shape_detector_app():
         if encoded_image is None:
             st.error("Error reading the image. Please try another file.")
     
-    # Create two columns for side-by-side display.
     col1, col2 = st.columns(2)
-    
     if uploaded_file is not None and encoded_image is not None:
         with col1:
             uploaded_image_rgb = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2RGB)
@@ -206,7 +201,7 @@ def shape_detector_app():
     if st.button("Decode"):
         if uploaded_file is not None and encoded_image is not None:
             shape = shape_option
-            # Detect boundaries based on user size limits.
+            # Detect boundaries based on size limits.
             gray = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2GRAY)
             ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
             contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -234,7 +229,7 @@ def shape_detector_app():
                     radius = int(radius)
                     if radius >= min_size_det and radius <= max_size_det:
                         detected_boundaries.append((int(x), int(y), radius))
-            # Decode using the detected boundaries.
+            # Decode using detected boundaries.
             binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=detected_boundaries, max_size=max_size_det, min_size=min_size_det)
             annotated_image_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
             with col2:
@@ -243,37 +238,18 @@ def shape_detector_app():
             grouped_colors = group_similar_colors(rgb_vals, threshold=10)
             grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
             st.subheader("Grouped Colors (Ranked by Count)")
-            # Display colors in three columns with clickable buttons.
-            col1c, col2c, col3c = st.columns(3)
+            # For each grouped color, display a color block and a clickable button.
             for idx, (color, count) in enumerate(grouped_colors):
-                rgb_str = f"RGB: {color} - Count: {count}"
-                # Create a small color block as HTML.
-                color_box = f"<div style='background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; border:1px solid #000;'></div>"
-                # Place the color block and a button in two subcolumns.
-                if idx % 3 == 0:
-                    with col1c:
-                        subcol1, subcol2 = st.columns([1, 3])
-                        subcol1.markdown(color_box, unsafe_allow_html=True)
-                        if subcol2.button(rgb_str, key=f"color_{idx}"):
-                            st.session_state.preselected_color = color
-                            st.session_state.app_mode = "Color Recipe"
-                            st.experimental_rerun()
-                elif idx % 3 == 1:
-                    with col2c:
-                        subcol1, subcol2 = st.columns([1, 3])
-                        subcol1.markdown(color_box, unsafe_allow_html=True)
-                        if subcol2.button(rgb_str, key=f"color_{idx}"):
-                            st.session_state.preselected_color = color
-                            st.session_state.app_mode = "Color Recipe"
-                            st.experimental_rerun()
-                else:
-                    with col3c:
-                        subcol1, subcol2 = st.columns([1, 3])
-                        subcol1.markdown(color_box, unsafe_allow_html=True)
-                        if subcol2.button(rgb_str, key=f"color_{idx}"):
-                            st.session_state.preselected_color = color
-                            st.session_state.app_mode = "Color Recipe"
-                            st.experimental_rerun()
+                st.markdown(
+                    f"<div style='display: flex; align-items: center;'>"
+                    f"<div style='background-color: rgb({color[0]}, {color[1]}, {color[2]}); "
+                    f"width: 30px; height: 30px; border: 1px solid #000; margin-right: 10px;'></div>"
+                    f"<div>{'RGB: ' + str(color) + ' - Count: ' + str(count)}</div>"
+                    f"</div>", unsafe_allow_html=True)
+                if st.button(f"Generate Recipe for RGB: {color}", key=f"color_{idx}"):
+                    st.session_state.preselected_color = color
+                    st.session_state.app_mode = "Color Recipe"
+                    st.experimental_rerun()
         else:
             st.warning("Please upload an image first.")
 
@@ -323,7 +299,7 @@ def painter_recipe_generator():
             st.error("No recipes found.")
 
 ##############################################################################
-# --- Functions from painter2.py (Painter App - Recipe Generator and Colors DataBase)
+# --- Painter Colors Database Functions
 ##############################################################################
 BASE_DIR = Path(__file__).parent if '__file__' in globals() else Path.cwd()
 COLOR_DB_FILE = str(BASE_DIR / "color.txt")
@@ -346,13 +322,11 @@ def parse_color_db(txt):
         line = line.strip()
         if not line:
             continue
-        # If line doesn't start with a digit, treat it as a header (database name).
         if not line[0].isdigit():
             current_db = line
             databases[current_db] = []
         else:
             tokens = line.split()
-            # Expect at least 4 tokens: index, color name, RGB string, density.
             if len(tokens) < 4:
                 continue
             index = tokens[0]
@@ -741,18 +715,17 @@ def painter_colors_database():
         show_remove_database_page()
 
 ##############################################################################
-# --- NEW: Color Recipe Page (for preselected RGB from Shape Detector)
+# --- NEW: Color Recipe Page (Preselected RGB from Shape Detector)
 ##############################################################################
 def color_recipe_app():
     st.title("Color Recipe Generator")
-    # Retrieve the preselected color from session state (default to white if not found)
+    # Retrieve the preselected color from session state (default to white)
     preselected_color = st.session_state.get("preselected_color", [255, 255, 255])
     st.write(f"Preselected Color: RGB{tuple(preselected_color)}")
-    # Display the color block for the preselected color.
     color_box_html = f"<div style='background-color: rgb({preselected_color[0]}, {preselected_color[1]}, {preselected_color[2]}); width:200px; height:200px; border:1px solid #000;'></div>"
     st.markdown(color_box_html, unsafe_allow_html=True)
     
-    # Allow selection of a database and percentage step (slider between 4 and 10)
+    # Allow database selection and slider (step between 4 and 10)
     db_choice = st.selectbox("Select a color database:", list(databases.keys()))
     step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5)
     
@@ -784,45 +757,46 @@ def color_recipe_app():
             st.error("No recipes found.")
 
 ##############################################################################
-# --- Main Navigation (Sidebar and Mode Selection)
+# --- Main Navigation (Sidebar Mode Selection)
 ##############################################################################
-def main():
-    st.sidebar.title("Options")
-    
-    if st.sidebar.button("Refresh App"):
-        read_color_file.clear()  # Clear the cached data.
-        if RerunException is not None:
-            raise RerunException(RerunData())  # Force a rerun.
-        else:
-            st.warning("Automatic refresh is not supported. Please manually reload your browser.")
-    
-    app_mode = st.sidebar.radio("Select Mode", [
-        "Image Generator", 
-        "Shape Detector", 
-        "Oil Painting Generator", 
-        "Colour Merger", 
-        "Recipe Generator", 
-        "Colors DataBase",
-        "Foogle Man Repo",
-        "Color Recipe"  # New mode for the Color Recipe page
-    ])
-    
-    if app_mode == "Image Generator":
-        image_generator_app()
-    elif app_mode == "Shape Detector":
-        shape_detector_app()
-    elif app_mode == "Oil Painting Generator":
-        oil_painting_page()
-    elif app_mode == "Colour Merger":
-        color_mixing_app()
-    elif app_mode == "Recipe Generator":
-        painter_recipe_generator()
-    elif app_mode == "Colors DataBase":
-        painter_colors_database()
-    elif app_mode == "Foogle Man Repo":
-        shape_art_generator_page()
-    elif app_mode == "Color Recipe":
-        color_recipe_app()
+# Use a session state key for the sidebar radio.
+if "app_mode" not in st.session_state:
+    st.session_state.app_mode = "Image Generator"
+
+app_mode = st.sidebar.radio("Select Mode", [
+    "Image Generator", 
+    "Shape Detector", 
+    "Oil Painting Generator", 
+    "Colour Merger", 
+    "Recipe Generator", 
+    "Colors DataBase",
+    "Foogle Man Repo",
+    "Color Recipe"  # New mode for Color Recipe page
+], key="app_mode")
+
+if st.sidebar.button("Refresh App"):
+    read_color_file.clear()  # Clear cached data.
+    if RerunException is not None:
+        raise RerunException(RerunData())  # Force a rerun.
+    else:
+        st.warning("Automatic refresh is not supported. Please reload your browser.")
+
+if app_mode == "Image Generator":
+    image_generator_app()
+elif app_mode == "Shape Detector":
+    shape_detector_app()
+elif app_mode == "Oil Painting Generator":
+    oil_painting_page()
+elif app_mode == "Colour Merger":
+    color_mixing_app()
+elif app_mode == "Recipe Generator":
+    painter_recipe_generator()
+elif app_mode == "Colors DataBase":
+    painter_colors_database()
+elif app_mode == "Foogle Man Repo":
+    shape_art_generator_page()
+elif app_mode == "Color Recipe":
+    color_recipe_app()
 
 if __name__ == "__main__":
     main()
