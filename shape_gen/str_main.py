@@ -181,6 +181,9 @@ def image_generator_app():
         else:
             st.warning("Please upload an image first.")
 
+# ---------------------------
+# SHAPE DETECTOR MODE
+# ---------------------------
 def shape_detector_app():
     st.header("Shape Detector")
     # Initialize session state variables if they don't exist.
@@ -273,12 +276,11 @@ def shape_detector_app():
                     if st.button("Select Color", key=f"select_color_{idx}"):
                         st.session_state.selected_recipe_color = color
 
-    # Recipe generation panel (same logic as in the Recipe Generator mode) is always visible below.
+    # Recipe generation panel (using the same logic as in Recipe Generator mode).
     st.subheader("Generate Recipe for Selected Color")
     if st.session_state.selected_recipe_color is not None:
-        desired_rgb = st.session_state.selected_recipe_color
+        desired_rgb = tuple(st.session_state.selected_recipe_color)
         st.write("**Desired Color:**", rgb_to_hex(*desired_rgb))
-        # Display the selected color block.
         display_color_block(desired_rgb, label="Desired")
     else:
         st.info("No color selected. Click on a color block above to select a color for recipe generation.")
@@ -290,7 +292,8 @@ def shape_detector_app():
         if st.session_state.selected_recipe_color is None:
             st.error("Please select a color from above before generating a recipe.")
         else:
-            recipes = generate_recipes(st.session_state.selected_recipe_color, selected_db_dict, step=step)
+            # Use the same logic as in the Recipe Generator mode.
+            recipes = generate_recipes(desired_rgb, selected_db_dict, step=step)
             if recipes:
                 st.write("### Top 3 Paint Recipes")
                 for idx, (recipe, mixed, err) in enumerate(recipes):
@@ -298,7 +301,7 @@ def shape_detector_app():
                     cols = st.columns(4)
                     with cols[0]:
                         st.write("Desired:")
-                        display_color_block(st.session_state.selected_recipe_color, label="Desired")
+                        display_color_block(desired_rgb, label="Desired")
                     with cols[1]:
                         st.write("Result:")
                         display_color_block(mixed, label="Mixed")
@@ -318,7 +321,6 @@ def shape_detector_app():
 # --------------------------------------------------------------------
 # --- Functions from painter2.py (Painter App - Recipe Generator and Colors DataBase)
 # --------------------------------------------------------------------
-# Fix: Build an absolute path to color.txt (assuming it is in the same directory as this file)
 BASE_DIR = Path(__file__).parent if '__file__' in globals() else Path.cwd()
 COLOR_DB_FILE = str(BASE_DIR / "color.txt")
 
@@ -340,13 +342,11 @@ def parse_color_db(txt):
         line = line.strip()
         if not line:
             continue
-        # If line doesn't start with a digit, treat it as a header (database name).
         if not line[0].isdigit():
             current_db = line
             databases[current_db] = []
         else:
             tokens = line.split()
-            # Expect at least 4 tokens: index, color name, RGB string, density.
             if len(tokens) < 4:
                 continue
             index = tokens[0]
