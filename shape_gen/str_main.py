@@ -183,8 +183,11 @@ def image_generator_app():
 
 def shape_detector_app():
     st.header("Shape Detector")
+    # Initialize session state variables if they don't exist.
     if "selected_recipe_color" not in st.session_state:
         st.session_state.selected_recipe_color = None
+    if "decoded" not in st.session_state:
+        st.session_state.decoded = None  # Will store decoded data (annotated image, grouped colors)
 
     uploaded_file = st.file_uploader("Upload an Encoded Image", type=["jpg", "jpeg", "png"])
     shape_option = st.selectbox("Select Shape", ["Triangle", "Rectangle", "Circle"])
@@ -198,18 +201,18 @@ def shape_detector_app():
         if encoded_image is None:
             st.error("Error reading the image. Please try another file.")
     
-    # Create two columns for side-by-side display.
+    # Display uploaded image on the left.
     col1, col2 = st.columns(2)
-    
     if uploaded_file is not None and encoded_image is not None:
         with col1:
             uploaded_image_rgb = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2RGB)
             st.image(uploaded_image_rgb, caption="Uploaded Encoded Image", use_container_width=True)
-    
-    if st.button("Decode"):
+
+    # When "Decode" is clicked, process and store the decoded results.
+    if st.button("Decode", key="decode_button"):
         if uploaded_file is not None and encoded_image is not None:
             shape = shape_option
-            # Detect boundaries based on user size limits.
+            # Detect boundaries.
             gray = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2GRAY)
             ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
             contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -237,36 +240,40 @@ def shape_detector_app():
                     radius = int(radius)
                     if radius >= min_size_det and radius <= max_size_det:
                         detected_boundaries.append((int(x), int(y), radius))
-            # Decode using the detected boundaries.
+            # Decode using detected boundaries.
             binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=detected_boundaries, max_size=max_size_det, min_size=min_size_det)
             annotated_image_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
             with col2:
                 st.image(annotated_image_rgb, caption=f"Decoded Annotated {shape_option} Image", use_container_width=True)
-            
             grouped_colors = group_similar_colors(rgb_vals, threshold=10)
             grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
-            st.subheader("Grouped Colors (Ranked by Count)")
-            col1c, col2c, col3c = st.columns(3)
-            for idx, (color, count) in enumerate(grouped_colors):
-                rgb_str = f"RGB: {color} - Count: {count}"
-                color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block;"
-                if idx % 3 == 0:
-                    with col1c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
-                        if st.button("Select Color", key=f"select_color_{idx}"):
-                            st.session_state.selected_recipe_color = color
-                elif idx % 3 == 1:
-                    with col2c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
-                        if st.button("Select Color", key=f"select_color_{idx}"):
-                            st.session_state.selected_recipe_color = color
-                else:
-                    with col3c:
-                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
-                        if st.button("Select Color", key=f"select_color_{idx}"):
-                            st.session_state.selected_recipe_color = color
+            st.session_state.decoded = {"grouped_colors": grouped_colors, "annotated_img": annotated_img}
+    
+    # If decoding has been done, display the grouped colors.
+    if st.session_state.decoded is not None:
+        st.subheader("Grouped Colors (Ranked by Count)")
+        grouped_colors = st.session_state.decoded["grouped_colors"]
+        col1c, col2c, col3c = st.columns(3)
+        for idx, (color, count) in enumerate(grouped_colors):
+            rgb_str = f"RGB: {color} - Count: {count}"
+            color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block;"
+            if idx % 3 == 0:
+                with col1c:
+                    st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                    if st.button("Select Color", key=f"select_color_{idx}"):
+                        st.session_state.selected_recipe_color = color
+            elif idx % 3 == 1:
+                with col2c:
+                    st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                    if st.button("Select Color", key=f"select_color_{idx}"):
+                        st.session_state.selected_recipe_color = color
+            else:
+                with col3c:
+                    st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                    if st.button("Select Color", key=f"select_color_{idx}"):
+                        st.session_state.selected_recipe_color = color
 
-    # Recipe generation panel always visible below the page.
+    # Recipe generation panel is always visible below.
     st.subheader("Generate Recipe for Selected Color")
     if st.session_state.selected_recipe_color is not None:
         st.write("Selected Color:", rgb_to_hex(*st.session_state.selected_recipe_color))
