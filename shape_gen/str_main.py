@@ -19,16 +19,19 @@ from pathlib import Path
 # Set page config for the merged app.
 st.set_page_config(page_title="Merged App", layout="wide")
 
-##############################################################################
-# --- Utility Functions (Image Generator, Shape Detector, Oil Painting, etc.)
-##############################################################################
+# --------------------------------------------------------------------
+# --- Functions from the original str_main.py (Image Generator, Shape Detector,
+#     Oil Painting Generator, Colour Merger)
+# --------------------------------------------------------------------
 
+# Function to calculate the Euclidean distance between two RGB colors
 def color_distance(color1, color2):
     return np.sqrt(np.sum((np.array(color1) - np.array(color2)) ** 2))
 
+# Function to group similar colors and count them
 def group_similar_colors(rgb_vals, threshold=10):
-    grouped_colors = []  # List to store groups of similar colors
-    counts = []  # List to store counts for each group
+    grouped_colors = []  # List to store final groups of similar colors
+    counts = []  # List to store counts of similar colors
 
     for color in rgb_vals:
         found_group = False
@@ -80,8 +83,8 @@ def color_mixing_app():
     st.title("RGB Color Mixing")
     if 'colors' not in st.session_state:
         st.session_state.colors = [
-            {"rgb": [255, 0, 0], "weight": 0.3},  # Red
-            {"rgb": [0, 255, 0], "weight": 0.6}   # Green
+            {"rgb": [255, 0, 0], "weight": 0.3},  # Default color 1 (Red)
+            {"rgb": [0, 255, 0], "weight": 0.6}   # Default color 2 (Green)
         ]
 
     def rgb_to_latent(rgb):
@@ -180,6 +183,9 @@ def image_generator_app():
 
 def shape_detector_app():
     st.header("Shape Detector")
+    if "selected_recipe_color" not in st.session_state:
+        st.session_state.selected_recipe_color = None
+
     uploaded_file = st.file_uploader("Upload an Encoded Image", type=["jpg", "jpeg", "png"])
     shape_option = st.selectbox("Select Shape", ["Triangle", "Rectangle", "Circle"])
     min_size_det = st.number_input("Enter the minimum size to detect:", min_value=1, value=3)
@@ -192,7 +198,9 @@ def shape_detector_app():
         if encoded_image is None:
             st.error("Error reading the image. Please try another file.")
     
+    # Create two columns for side-by-side display.
     col1, col2 = st.columns(2)
+    
     if uploaded_file is not None and encoded_image is not None:
         with col1:
             uploaded_image_rgb = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2RGB)
@@ -201,7 +209,7 @@ def shape_detector_app():
     if st.button("Decode"):
         if uploaded_file is not None and encoded_image is not None:
             shape = shape_option
-            # Detect boundaries based on size limits.
+            # Detect boundaries based on user size limits.
             gray = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2GRAY)
             ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
             contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -229,7 +237,7 @@ def shape_detector_app():
                     radius = int(radius)
                     if radius >= min_size_det and radius <= max_size_det:
                         detected_boundaries.append((int(x), int(y), radius))
-            # Decode using detected boundaries.
+            # Decode using the detected boundaries.
             binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=detected_boundaries, max_size=max_size_det, min_size=min_size_det)
             annotated_image_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
             with col2:
@@ -238,20 +246,402 @@ def shape_detector_app():
             grouped_colors = group_similar_colors(rgb_vals, threshold=10)
             grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
             st.subheader("Grouped Colors (Ranked by Count)")
-            # Display each grouped color along with a button.
+            col1c, col2c, col3c = st.columns(3)
             for idx, (color, count) in enumerate(grouped_colors):
-                st.markdown(
-                    f"<div style='display: flex; align-items: center;'>"
-                    f"<div style='background-color: rgb({color[0]}, {color[1]}, {color[2]}); "
-                    f"width: 30px; height: 30px; border: 1px solid #000; margin-right: 10px;'></div>"
-                    f"<div>{'RGB: ' + str(color) + ' - Count: ' + str(count)}</div>"
-                    f"</div>", unsafe_allow_html=True)
-                if st.button(f"Generate Recipe for RGB: {color}", key=f"color_{idx}"):
-                    st.session_state.preselected_color = color
-                    st.session_state.app_mode = "Color Recipe"
-                    st.experimental_rerun()
+                rgb_str = f"RGB: {color} - Count: {count}"
+                color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block;"
+                if idx % 3 == 0:
+                    with col1c:
+                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        if st.button("Generate Recipe", key=f"gen_recipe_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                            st.experimental_rerun()
+                elif idx % 3 == 1:
+                    with col2c:
+                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        if st.button("Generate Recipe", key=f"gen_recipe_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                            st.experimental_rerun()
+                else:
+                    with col3c:
+                        st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
+                        if st.button("Generate Recipe", key=f"gen_recipe_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                            st.experimental_rerun()
+    
+    # If a recipe color has been selected, display the recipe generator panel.
+    if st.session_state.selected_recipe_color is not None:
+        st.subheader("Generate Recipe for Selected Color")
+        selected_color = st.session_state.selected_recipe_color
+        st.write("Selected Color:", rgb_to_hex(*selected_color))
+        display_color_block(selected_color, label="Selected")
+        db_choice = st.selectbox("Select a color database for recipe:", list(databases.keys()), key="recipe_db_select")
+        selected_db_dict = convert_db_list_to_dict(databases[db_choice])
+        step_val = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_slider")
+        if st.button("Generate Recipe for Selected Color", key="gen_recipe_for_selected"):
+            recipes = generate_recipes(selected_color, selected_db_dict, step=step_val)
+            if recipes:
+                st.write("### Top 3 Paint Recipes")
+                for idx, (recipe, mixed, err) in enumerate(recipes):
+                    st.write(f"**Recipe {idx+1}:** (Error = {err:.2f})")
+                    cols = st.columns(4)
+                    with cols[0]:
+                        st.write("Desired:")
+                        display_color_block(selected_color, label="Desired")
+                    with cols[1]:
+                        st.write("Result:")
+                        display_color_block(mixed, label="Mixed")
+                    with cols[2]:
+                        st.write("Composition:")
+                        for name, perc in recipe:
+                            if perc > 0:
+                                base_rgb = tuple(selected_db_dict[name]["rgb"])
+                                st.write(f"- **{name}**: {perc:.1f}%")
+                                display_color_block(base_rgb, label=name)
+                    with cols[3]:
+                        st.write("Difference:")
+                        st.write(f"RGB Distance: {err:.2f}")
+            else:
+                st.error("No recipes found.")
+
+# --------------------------------------------------------------------
+# --- Functions from painter2.py (Painter App - Recipe Generator and Colors DataBase)
+# --------------------------------------------------------------------
+# Fix: Build an absolute path to color.txt (assuming it is in the same directory as this file)
+BASE_DIR = Path(__file__).parent if '__file__' in globals() else Path.cwd()
+COLOR_DB_FILE = str(BASE_DIR / "color.txt")
+
+import os
+
+@st.cache_data
+def read_color_file(filename=COLOR_DB_FILE):
+    try:
+        with open(filename, "r") as f:
+            return f.read()
+    except Exception as e:
+        st.error("Error reading color.txt: " + str(e))
+        return ""
+
+def parse_color_db(txt):
+    databases = {}
+    current_db = None
+    for line in txt.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # If line doesn't start with a digit, treat it as a header (database name).
+        if not line[0].isdigit():
+            current_db = line
+            databases[current_db] = []
         else:
-            st.warning("Please upload an image first.")
+            tokens = line.split()
+            # Expect at least 4 tokens: index, color name, RGB string, density.
+            if len(tokens) < 4:
+                continue
+            index = tokens[0]
+            rgb_str = tokens[-2]
+            color_name = " ".join(tokens[1:-2])
+            try:
+                r, g, b = [int(x) for x in rgb_str.split(",")]
+            except Exception:
+                continue
+            databases[current_db].append((color_name, (r, g, b)))
+    return databases
+color_txt = read_color_file()
+databases = parse_color_db(color_txt)
+
+def convert_db_list_to_dict(color_list):
+    d = {}
+    for name, rgb in color_list:
+        d[name] = {"rgb": list(rgb)}
+    return d
+
+def rgb_to_hex(r, g, b):
+    return f'#{r:02x}{g:02x}{b:02x}'
+
+def mix_colors(recipe):
+    total, r_total, g_total, b_total = 0, 0, 0, 0
+    for color, perc in recipe:
+        r, g, b = color
+        r_total += r * perc
+        g_total += g * perc
+        b_total += b * perc
+        total += perc
+    if total == 0:
+        return (0, 0, 0)
+    return (round(r_total / total), round(g_total / total), round(b_total / total))
+
+def color_error(c1, c2):
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(c1, c2)))
+
+def generate_recipes(target, base_colors_dict, step=10.0):
+    candidates = []
+    base_list = [(name, info["rgb"]) for name, info in base_colors_dict.items()]
+    for name, rgb in base_list:
+        err = color_error(tuple(rgb), target)
+        if err < 5:
+            recipe = [(name, 100.0)]
+            candidates.append((recipe, tuple(rgb), err))
+    for (name1, rgb1), (name2, rgb2), (name3, rgb3) in itertools.combinations(base_list, 3):
+        for p1 in np.arange(0, 100 + step, step):
+            for p2 in np.arange(0, 100 - p1 + step, step):
+                p3 = 100 - p1 - p2
+                if p3 < 0:
+                    continue
+                recipe = [(name1, p1), (name2, p2), (name3, p3)]
+                mix_recipe = [(rgb1, p1), (rgb2, p2), (rgb3, p3)]
+                mixed = mix_colors(mix_recipe)
+                err = color_error(mixed, target)
+                candidates.append((recipe, mixed, err))
+    candidates.sort(key=lambda x: x[2])
+    top = []
+    seen = set()
+    for rec, mixed, err in candidates:
+        key = tuple(sorted((name, perc) for name, perc in rec if perc > 0))
+        if key not in seen:
+            seen.add(key)
+            top.append((rec, mixed, err))
+        if len(top) >= 3:
+            break
+    return top
+
+def display_color_block(color, label=""):
+    hex_color = rgb_to_hex(*color)
+    st.markdown(
+        f"<div style='background-color: {hex_color}; width:100px; height:100px; border:1px solid #000; text-align: center; line-height: 100px;'>{label}</div>",
+        unsafe_allow_html=True,
+    )
+
+def display_thin_color_block(color):
+    hex_color = rgb_to_hex(*color)
+    st.markdown(
+        f"<div style='background-color: {hex_color}; width:50px; height:20px; border:1px solid #000; display:inline-block; margin-right:10px;'></div>",
+        unsafe_allow_html=True,
+    )
+
+def add_color_to_db(selected_db, color_name, r, g, b):
+    try:
+        with open(COLOR_DB_FILE, "r") as f:
+            lines = f.readlines()
+    except Exception as e:
+        st.error("Error reading file for update: " + str(e))
+        return False
+    new_lines = []
+    in_section = False
+    inserted = False
+    last_index = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append(line)
+            continue
+        if not stripped[0].isdigit():
+            if in_section and not inserted:
+                new_lines.append(f"{last_index+1} {color_name} {r},{g},{b} 0\n")
+                inserted = True
+            new_lines.append(line)
+            if stripped == selected_db:
+                in_section = True
+            else:
+                in_section = False
+            continue
+        if in_section:
+            tokens = stripped.split()
+            if tokens[0].isdigit():
+                try:
+                    idx = int(tokens[0])
+                    last_index = max(last_index, idx)
+                except:
+                    pass
+        new_lines.append(line)
+    if in_section and not inserted:
+        new_lines.append(f"{last_index+1} {color_name} {r},{g},{b} 0\n")
+    try:
+        with open(COLOR_DB_FILE, "w") as f:
+            f.writelines(new_lines)
+        read_color_file.clear()
+        return True
+    except Exception as e:
+        st.error("Error writing to file: " + str(e))
+        return False
+
+def remove_color_from_db(selected_db, color_name):
+    try:
+        with open(COLOR_DB_FILE, "r") as f:
+            lines = f.readlines()
+    except Exception as e:
+        st.error("Error reading file for removal: " + str(e))
+        return False
+    new_lines = []
+    in_section = False
+    removed = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append(line)
+            continue
+        if not stripped[0].isdigit():
+            if stripped == selected_db:
+                in_section = True
+            else:
+                in_section = False
+            new_lines.append(line)
+            continue
+        if in_section and not removed:
+            tokens = stripped.split()
+            current_name = " ".join(tokens[1:-2]).strip()
+            if current_name.lower() == color_name.lower():
+                removed = True
+                continue
+        new_lines.append(line)
+    if not removed:
+        st.warning("Color not found in the selected database.")
+        return False
+    try:
+        with open(COLOR_DB_FILE, "w") as f:
+            f.writelines(new_lines)
+        read_color_file.clear()
+        return True
+    except Exception as e:
+        st.error("Error writing to file: " + str(e))
+        return False
+
+def create_custom_database(new_db_name):
+    line = f"\n{new_db_name}\n"
+    try:
+        with open(COLOR_DB_FILE, "a") as f:
+            f.write(line)
+        read_color_file.clear()
+        return True
+    except Exception as e:
+        st.error("Error writing to file: " + str(e))
+        return False
+
+def remove_database(db_name):
+    try:
+        with open(COLOR_DB_FILE, "r") as f:
+            lines = f.readlines()
+    except Exception as e:
+        st.error("Error reading file for removal: " + str(e))
+        return False
+    new_lines = []
+    in_target = False
+    removed = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append(line)
+            continue
+        if not stripped[0].isdigit():
+            if stripped == db_name:
+                in_target = True
+                removed = True
+                continue
+            else:
+                in_target = False
+                new_lines.append(line)
+        else:
+            if in_target:
+                continue
+            else:
+                new_lines.append(line)
+    if not removed:
+        st.warning("Database not found.")
+        return False
+    try:
+        with open(COLOR_DB_FILE, "w") as f:
+            f.writelines(new_lines)
+        read_color_file.clear()
+        return True
+    except Exception as e:
+        st.error("Error writing to file: " + str(e))
+        return False
+
+def show_databases_page():
+    st.title("Color Database - Data Bases")
+    selected_db = st.selectbox("Select a color database:", list(databases.keys()))
+    st.write(f"### Colors in database: {selected_db}")
+    for name, rgb in databases[selected_db]:
+        st.write(f"**{name}**: {rgb_to_hex(*rgb)} ({rgb[0]},{rgb[1]},{rgb[2]})")
+        display_thin_color_block(rgb)
+
+def show_add_colors_page():
+    global databases
+    st.title("Colors DataBase - Add Colors")
+    selected_db = st.selectbox("Select database to add a new color:", list(databases.keys()))
+    with st.form("add_color_form"):
+        new_color_name = st.text_input("New Color Name")
+        r = st.number_input("Red", min_value=0, max_value=255, value=255)
+        g = st.number_input("Green", min_value=0, max_value=255, value=255)
+        b = st.number_input("Blue", min_value=0, max_value=255, value=255)
+        submitted = st.form_submit_button("Add Color")
+        if submitted:
+            if new_color_name:
+                success = add_color_to_db(selected_db, new_color_name, int(r), int(g), int(b))
+                if success:
+                    st.success(f"Color '{new_color_name}' added to {selected_db}!")
+                    color_txt = read_color_file(COLOR_DB_FILE)
+                    databases = parse_color_db(color_txt)
+                else:
+                    st.error("Failed to add color.")
+            else:
+                st.error("Please enter a color name.")
+
+def show_remove_colors_page():
+    global databases
+    st.title("Colors DataBase - Remove Colors")
+    selected_db = st.selectbox("Select a color database:", list(databases.keys()))
+    color_options = [name for name, _ in databases[selected_db]]
+    if not color_options:
+        st.warning("No colors available in the selected database.")
+        return
+    chosen_color = st.selectbox("Select the color to remove:", color_options)
+    if st.button("Remove Color"):
+        success = remove_color_from_db(selected_db, chosen_color)
+        if success:
+            st.success(f"Color '{chosen_color}' removed from {selected_db}!")
+            color_txt = read_color_file(COLOR_DB_FILE)
+            databases = parse_color_db(color_txt)
+        else:
+            st.error("Failed to remove color or color not found.")
+
+def show_remove_database_page():
+    global databases
+    st.title("Colors DataBase - Remove Database")
+    db_options = list(databases.keys())
+    selected_db_to_remove = st.selectbox("Select the database to remove:", db_options)
+    with st.form("remove_db_form"):
+        confirm = st.checkbox("I confirm that I want to permanently delete this database.")
+        submitted = st.form_submit_button("Remove Database")
+        if submitted:
+            if selected_db_to_remove and confirm:
+                success = remove_database(selected_db_to_remove)
+                if success:
+                    st.success(f"Database '{selected_db_to_remove}' removed!")
+                    color_txt = read_color_file(COLOR_DB_FILE)
+                    databases = parse_color_db(color_txt)
+                else:
+                    st.error("Failed to remove database.")
+            else:
+                st.error("Please select a database and confirm deletion.")
+
+def show_create_custom_db_page():
+    global databases
+    st.title("Colors DataBase - Create Custom Data Base")
+    with st.form("create_db_form"):
+        new_db_name = st.text_input("Enter new database name:")
+        submitted = st.form_submit_button("Create Database")
+        if submitted:
+            if new_db_name:
+                success = create_custom_database(new_db_name)
+                if success:
+                    st.success(f"Database '{new_db_name}' created!")
+                    color_txt = read_color_file(COLOR_DB_FILE)
+                    databases = parse_color_db(color_txt)
+                else:
+                    st.error("Failed to create database.")
+            else:
+                st.error("Please enter a database name.")
 
 def painter_recipe_generator():
     st.title("Painter App - Recipe Generator")
@@ -333,56 +723,19 @@ def painter_colors_database():
     elif st.session_state.subpage == "remove_database":
         show_remove_database_page()
 
-##############################################################################
-# --- NEW: Color Recipe Page (Preselected RGB from Shape Detector)
-##############################################################################
-def color_recipe_app():
-    st.title("Color Recipe Generator")
-    # Retrieve the preselected color from session state (default to white)
-    preselected_color = st.session_state.get("preselected_color", [255, 255, 255])
-    st.write(f"Preselected Color: RGB{tuple(preselected_color)}")
-    color_box_html = f"<div style='background-color: rgb({preselected_color[0]}, {preselected_color[1]}, {preselected_color[2]}); width:200px; height:200px; border:1px solid #000;'></div>"
-    st.markdown(color_box_html, unsafe_allow_html=True)
-    
-    # Allow database selection and slider (step between 4 and 10)
-    db_choice = st.selectbox("Select a color database:", list(databases.keys()))
-    step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5)
-    
-    if st.button("Generate Recipes"):
-        selected_db_dict = convert_db_list_to_dict(databases[db_choice])
-        recipes = generate_recipes(tuple(preselected_color), selected_db_dict, step=step)
-        if recipes:
-            st.write("### Top 3 Paint Recipes")
-            for idx, (recipe, mixed, err) in enumerate(recipes):
-                st.write(f"**Recipe {idx+1}:** (Error = {err:.2f})")
-                cols = st.columns(4)
-                with cols[0]:
-                    st.write("Desired:")
-                    display_color_block(tuple(preselected_color), label="Desired")
-                with cols[1]:
-                    st.write("Result:")
-                    display_color_block(mixed, label="Mixed")
-                with cols[2]:
-                    st.write("Composition:")
-                    for name, perc in recipe:
-                        if perc > 0:
-                            base_rgb = tuple(selected_db_dict[name]["rgb"])
-                            st.write(f"- **{name}**: {perc:.1f}%")
-                            display_color_block(base_rgb, label=name)
-                with cols[3]:
-                    st.write("Difference:")
-                    st.write(f"RGB Distance: {err:.2f}")
-        else:
-            st.error("No recipes found.")
-
-##############################################################################
-# --- Main Navigation wrapped in a main() function
-##############################################################################
+# --------------------------------------------------------------------
+# --- Main Navigation (6 radio buttons)
+# --------------------------------------------------------------------
 def main():
-    # Ensure app_mode exists in session state
-    if "app_mode" not in st.session_state:
-        st.session_state.app_mode = "Image Generator"
-
+    st.sidebar.title("Options")
+    
+    if st.sidebar.button("Refresh App"):
+        read_color_file.clear()  # Clear the cached data.
+        if RerunException is not None:
+            raise RerunException(RerunData())  # Force a rerun.
+        else:
+            st.warning("Automatic refresh is not supported. Please manually reload your browser.")
+    
     app_mode = st.sidebar.radio("Select Mode", [
         "Image Generator", 
         "Shape Detector", 
@@ -390,17 +743,9 @@ def main():
         "Colour Merger", 
         "Recipe Generator", 
         "Colors DataBase",
-        "Foogle Man Repo",
-        "Color Recipe"  # New mode for Color Recipe page
-    ], key="app_mode")
-
-    if st.sidebar.button("Refresh App"):
-        read_color_file.clear()  # Clear cached data.
-        if RerunException is not None:
-            raise RerunException(RerunData())  # Force a rerun.
-        else:
-            st.warning("Automatic refresh is not supported. Please reload your browser.")
-
+        "Foogle Man Repo"  # <-- New page added here
+    ])
+    
     if app_mode == "Image Generator":
         image_generator_app()
     elif app_mode == "Shape Detector":
@@ -413,10 +758,8 @@ def main():
         painter_recipe_generator()
     elif app_mode == "Colors DataBase":
         painter_colors_database()
-    elif app_mode == "Foogle Man Repo":
-        shape_art_generator_page()
-    elif app_mode == "Color Recipe":
-        color_recipe_app()
+    elif app_mode == "Foogle Man Repo":  # <-- New condition
+        shape_art_generator_page()    
 
 if __name__ == "__main__":
     main()
