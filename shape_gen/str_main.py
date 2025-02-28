@@ -260,7 +260,7 @@ def shape_detector_app():
             st.subheader("Grouped Colors (Ranked by Count)")
             col1c, col2c, col3c = st.columns(3)
             for idx, (color, count) in enumerate(decoded_data["grouped_colors"]):
-                rgb_str = f"RGB: {color} - Count: {count}"
+                rgb_str = f"RGB: {color[0]}, {color[1]}, {color[2]} - Count: {count}"
                 color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block; cursor:pointer;"
                 if idx % 3 == 0:
                     with col1c:
