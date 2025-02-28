@@ -181,150 +181,163 @@ def image_generator_app():
         else:
             st.warning("Please upload an image first.")
 
-# ---------------------------
-# SHAPE DETECTOR MODE
-# ---------------------------
+# --------------------------------------------------------------------
+# --- Updated Shape Detector with Embedded Recipe Generation Form
+# --------------------------------------------------------------------
 def shape_detector_app():
     st.header("Shape Detector")
-    # Initialize session state variables if they don't exist.
-    if "selected_recipe_color" not in st.session_state:
-        st.session_state.selected_recipe_color = None
-    if "decoded" not in st.session_state:
-        st.session_state.decoded = None  # Will store decoded data (annotated image, grouped colors)
-
     uploaded_file = st.file_uploader("Upload an Encoded Image", type=["jpg", "jpeg", "png"])
     shape_option = st.selectbox("Select Shape", ["Triangle", "Rectangle", "Circle"])
     min_size_det = st.number_input("Enter the minimum size to detect:", min_value=1, value=3)
     max_size_det = st.number_input("Enter the maximum size to detect:", min_value=1, value=10)
     
-    encoded_image = None
+    # Process file upload and store the encoded image in session state.
     if uploaded_file is not None:
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         encoded_image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         if encoded_image is None:
             st.error("Error reading the image. Please try another file.")
-    
-    # Display uploaded image on the left.
-    col1, col2 = st.columns(2)
-    if uploaded_file is not None and encoded_image is not None:
-        with col1:
-            uploaded_image_rgb = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2RGB)
-            st.image(uploaded_image_rgb, caption="Uploaded Encoded Image", use_container_width=True)
-
-    # When "Decode" is clicked, process and store the decoded results.
-    if st.button("Decode", key="decode_button"):
-        if uploaded_file is not None and encoded_image is not None:
-            shape = shape_option
-            # Detect boundaries.
-            gray = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2GRAY)
-            ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-            detected_boundaries = []
-            if shape == "Triangle":
-                for cnt in contours:
-                    peri = cv2.arcLength(cnt, True)
-                    approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-                    if len(approx) == 3:
-                        tri = approx.reshape(-1, 2)
-                        xs = tri[:, 0]
-                        ys = tri[:, 1]
-                        width = xs.max() - xs.min()
-                        height = ys.max() - ys.min()
-                        if width >= min_size_det and width <= max_size_det and height >= min_size_det and height <= max_size_det:
-                            detected_boundaries.append(tri)
-            elif shape == "Rectangle":
-                for cnt in contours:
-                    x, y, w, h = cv2.boundingRect(cnt)
-                    if w >= min_size_det and w <= max_size_det and h >= min_size_det and h <= max_size_det:
-                        detected_boundaries.append((x, y, w, h))
-            elif shape == "Circle":
-                for cnt in contours:
-                    (x, y), radius = cv2.minEnclosingCircle(cnt)
-                    radius = int(radius)
-                    if radius >= min_size_det and radius <= max_size_det:
-                        detected_boundaries.append((int(x), int(y), radius))
-            # Decode using detected boundaries.
-            binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=detected_boundaries, max_size=max_size_det, min_size=min_size_det)
-            annotated_image_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
-            with col2:
-                st.image(annotated_image_rgb, caption=f"Decoded Annotated {shape_option} Image", use_container_width=True)
-            grouped_colors = group_similar_colors(rgb_vals, threshold=10)
-            grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
-            st.session_state.decoded = {"grouped_colors": grouped_colors, "annotated_img": annotated_img}
-    
-    # If decoding has been done, display the grouped colors.
-    if st.session_state.decoded is not None:
-        st.subheader("Grouped Colors (Ranked by Count)")
-        grouped_colors = st.session_state.decoded["grouped_colors"]
-        col1c, col2c, col3c = st.columns(3)
-        for idx, (color, count) in enumerate(grouped_colors):
-            rgb_str = f"RGB: {color} - Count: {count}"
-            color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block;"
-            if idx % 3 == 0:
-                with col1c:
-                    st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
-                    if st.button("Select Color", key=f"select_color_{idx}"):
-                        st.session_state.selected_recipe_color = color
-            elif idx % 3 == 1:
-                with col2c:
-                    st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
-                    if st.button("Select Color", key=f"select_color_{idx}"):
-                        st.session_state.selected_recipe_color = color
-            else:
-                with col3c:
-                    st.markdown(f"<div style='{color_box}'></div> {rgb_str}", unsafe_allow_html=True)
-                    if st.button("Select Color", key=f"select_color_{idx}"):
-                        st.session_state.selected_recipe_color = color
-
-    # Recipe generation panel (using the same logic as in Recipe Generator mode).
-    st.subheader("Generate Recipe for Selected Color")
-    if st.session_state.selected_recipe_color is not None:
-        # Convert the selected color to a tuple of ints (just as in the Recipe Generator mode).
-        desired_rgb = tuple(int(c) for c in st.session_state.selected_recipe_color)
-        st.write("**Desired Color:**", rgb_to_hex(*desired_rgb))
-        display_color_block(desired_rgb, label="Desired")
-    else:
-        st.info("No color selected. Click on a color block above to select a color for recipe generation.")
-    
-    db_choice = st.selectbox("Select a color database for recipe:", list(databases.keys()), key="recipe_db_select_panel")
-    selected_db_dict = convert_db_list_to_dict(databases[db_choice])
-    step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_slider_panel")
-    if st.button("Generate Recipes", key="generate_recipes_panel"):
-        if st.session_state.selected_recipe_color is None:
-            st.error("Please select a color from above before generating a recipe.")
         else:
-            recipes = generate_recipes(desired_rgb, selected_db_dict, step=step)
-            if recipes:
-                st.write("### Top 3 Paint Recipes")
-                for idx, (recipe, mixed, err) in enumerate(recipes):
-                    st.write(f"**Recipe {idx+1}:** (Error = {err:.2f})")
-                    cols = st.columns(4)
-                    with cols[0]:
-                        st.write("Desired:")
-                        display_color_block(desired_rgb, label="Desired")
-                    with cols[1]:
-                        st.write("Result:")
-                        display_color_block(mixed, label="Mixed")
-                    with cols[2]:
-                        st.write("Composition:")
-                        for name, perc in recipe:
-                            if perc > 0:
-                                base_rgb = tuple(selected_db_dict[name]["rgb"])
-                                st.write(f"- **{name}**: {perc:.1f}%")
-                                display_color_block(base_rgb, label=name)
-                    with cols[3]:
-                        st.write("Difference:")
-                        st.write(f"RGB Distance: {err:.2f}")
+            st.session_state.encoded_image = encoded_image
+    else:
+        st.session_state.pop("encoded_image", None)
+        st.session_state.pop("decoded_data", None)
+        st.session_state.pop("selected_recipe_color", None)
+    
+    col1, col2 = st.columns(2)
+    if "encoded_image" in st.session_state:
+        with col1:
+            uploaded_image_rgb = cv2.cvtColor(st.session_state.encoded_image, cv2.COLOR_BGR2RGB)
+            st.image(uploaded_image_rgb, caption="Uploaded Encoded Image", use_container_width=True)
+    
+    # If the user clicks Decode or if decoded data already exists, process/display decode result.
+    if st.button("Decode") or ("decoded_data" in st.session_state):
+        if "encoded_image" in st.session_state:
+            # Only perform decode if not already stored.
+            if "decoded_data" not in st.session_state or st.button("Re-decode", key="redecode"):
+                encoded_image = st.session_state.encoded_image
+                shape = shape_option
+                gray = cv2.cvtColor(encoded_image, cv2.COLOR_BGR2GRAY)
+                ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+                detected_boundaries = []
+                if shape == "Triangle":
+                    for cnt in contours:
+                        peri = cv2.arcLength(cnt, True)
+                        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+                        if len(approx) == 3:
+                            tri = approx.reshape(-1, 2)
+                            xs = tri[:, 0]
+                            ys = tri[:, 1]
+                            width = xs.max() - xs.min()
+                            height = ys.max() - ys.min()
+                            if width >= min_size_det and width <= max_size_det and height >= min_size_det and height <= max_size_det:
+                                detected_boundaries.append(tri)
+                elif shape == "Rectangle":
+                    for cnt in contours:
+                        x, y, w, h = cv2.boundingRect(cnt)
+                        if w >= min_size_det and w <= max_size_det and h >= min_size_det and h <= max_size_det:
+                            detected_boundaries.append((x, y, w, h))
+                elif shape == "Circle":
+                    for cnt in contours:
+                        (x, y), radius = cv2.minEnclosingCircle(cnt)
+                        radius = int(radius)
+                        if radius >= min_size_det and radius <= max_size_det:
+                            detected_boundaries.append((int(x), int(y), radius))
+                binary_img, annotated_img, rgb_vals = decode(encoded_image, shape, boundaries=detected_boundaries, max_size=max_size_det, min_size=min_size_det)
+                annotated_image_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+                grouped_colors = group_similar_colors(rgb_vals, threshold=10)
+                grouped_colors = sorted(grouped_colors, key=lambda x: x[1], reverse=True)
+                st.session_state.decoded_data = {
+                    "annotated_image_rgb": annotated_image_rgb,
+                    "grouped_colors": grouped_colors,
+                    "annotated_img": annotated_img
+                }
+            decoded_data = st.session_state.decoded_data
+            with col2:
+                st.image(decoded_data["annotated_image_rgb"], caption=f"Decoded Annotated {shape_option} Image", use_container_width=True)
+            
+            st.subheader("Grouped Colors (Ranked by Count)")
+            col1c, col2c, col3c = st.columns(3)
+            for idx, (color, count) in enumerate(decoded_data["grouped_colors"]):
+                rgb_str = f"RGB: {color} - Count: {count}"
+                color_box = f"background-color: rgb({color[0]}, {color[1]}, {color[2]}); height: 30px; width: 30px; margin-right: 10px; display: inline-block; cursor:pointer;"
+                if idx % 3 == 0:
+                    with col1c:
+                        if st.button(f"{rgb_str}", key=f"color_btn_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                        st.markdown(f"<div style='{color_box}'></div>", unsafe_allow_html=True)
+                elif idx % 3 == 1:
+                    with col2c:
+                        if st.button(f"{rgb_str}", key=f"color_btn_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                        st.markdown(f"<div style='{color_box}'></div>", unsafe_allow_html=True)
+                else:
+                    with col3c:
+                        if st.button(f"{rgb_str}", key=f"color_btn_{idx}"):
+                            st.session_state.selected_recipe_color = color
+                        st.markdown(f"<div style='{color_box}'></div>", unsafe_allow_html=True)
+            
+            is_success, buffer = cv2.imencode(".png", decoded_data["annotated_img"])
+            if is_success:
+                st.download_button(
+                    label="Download Decoded Image",
+                    data=buffer.tobytes(),
+                    file_name="decoded_image.png",
+                    mime="image/png"
+                )
+            
+            # Recipe Generation Section (always visible below the decoded output)
+            st.markdown("---")
+            st.subheader("Recipe Generator")
+            # Ensure fixed_color is an integer tuple (same as in Recipe Generator mode)
+            if "selected_recipe_color" in st.session_state and st.session_state.selected_recipe_color is not None:
+                fixed_color = tuple(int(c) for c in st.session_state.selected_recipe_color)
+                st.write("Selected Color:")
+                display_color_block(fixed_color, label="Selected")
             else:
-                st.error("No recipes found.")
+                st.write("No color selected. Please click on a color above.")
+                fixed_color = None
+            
+            db_choice = st.selectbox("Select a color database:", list(databases.keys()), key="recipe_db_sd")
+            step = st.slider("Select percentage step for recipe generation:", 4.0, 10.0, 10.0, step=0.5, key="recipe_step_sd")
+            if st.button("Generate Recipe", key="generate_recipe_sd"):
+                if fixed_color is None:
+                    st.error("No color selected. Please click on a color above to generate a recipe.")
+                else:
+                    selected_db_dict = convert_db_list_to_dict(databases[db_choice])
+                    recipes = generate_recipes(fixed_color, selected_db_dict, step=step)
+                    if recipes:
+                        st.write("### Top 3 Paint Recipes")
+                        for idx, (recipe, mixed, err) in enumerate(recipes):
+                            st.write(f"**Recipe {idx+1}:** (Error = {err:.2f})")
+                            cols = st.columns(4)
+                            with cols[0]:
+                                st.write("Desired:")
+                                display_color_block(fixed_color, label="Desired")
+                            with cols[1]:
+                                st.write("Result:")
+                                display_color_block(mixed, label="Mixed")
+                            with cols[2]:
+                                st.write("Composition:")
+                                for name, perc in recipe:
+                                    if perc > 0:
+                                        base_rgb = tuple(selected_db_dict[name]["rgb"])
+                                        st.write(f"- **{name}**: {perc:.1f}%")
+                                        display_color_block(base_rgb, label=name)
+                            with cols[3]:
+                                st.write("Difference:")
+                                st.write(f"RGB Distance: {err:.2f}")
+                    else:
+                        st.error("No recipes found.")
+        else:
+            st.warning("Please upload an image first.")
 
 # --------------------------------------------------------------------
 # --- Functions from painter2.py (Painter App - Recipe Generator and Colors DataBase)
 # --------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent if '__file__' in globals() else Path.cwd()
 COLOR_DB_FILE = str(BASE_DIR / "color.txt")
-
-import os
 
 @st.cache_data
 def read_color_file(filename=COLOR_DB_FILE):
@@ -358,6 +371,7 @@ def parse_color_db(txt):
                 continue
             databases[current_db].append((color_name, (r, g, b)))
     return databases
+
 color_txt = read_color_file()
 databases = parse_color_db(color_txt)
 
