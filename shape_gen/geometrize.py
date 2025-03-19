@@ -306,11 +306,19 @@ if uploaded_file is not None:
         # Run Oil-Painting pipeline if selected
         if oil_option:
             os.makedirs("uploads", exist_ok=True)
-            # Resize input image to 256x256 for oil painting
+    # Resize input image to 256x256 for oil painting
             resized_img = input_img.resize((256, 256))
             file_path = os.path.join("uploads", uploaded_file.name)
             resized_img.save(file_path)
-            command = [sys.executable, "Oil-Painting.py", "--f", file_path, "--p", str(p_value)]
+    
+    # Use the absolute path to Oil-Painting.py
+            command = [
+                sys.executable,
+                "/mount/src/app/shape_gen/Oil-Painting.py",  # <-- Updated here
+                "--f", file_path,
+                "--p", str(p_value)
+            ]
+    
             result = subprocess.run(command, capture_output=True, text=True)
             if result.returncode == 0:
                 base_name = os.path.splitext(uploaded_file.name)[0]
@@ -324,6 +332,7 @@ if uploaded_file is not None:
             else:
                 st.error("Error in Oil-Painting process:")
                 st.text(result.stderr)
+
         
         # Run Geometrize pipeline if selected
         if geom_option:
