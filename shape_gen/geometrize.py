@@ -346,7 +346,7 @@ if uploaded_file is not None:
 def geometrize_app():
     st.title("Image Processing App")
 
-    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"], key="geometrize_upload")
     if uploaded_file is not None:
         # Read the uploaded image once
         input_img = Image.open(uploaded_file)
