@@ -341,3 +341,73 @@ if uploaded_file is not None:
             else:
                 for key, img in results.items():
                     st.image(img, caption=f"{key} Result", use_column_width=True)
+
+
+def geometrize_app():
+    st.title("Image Processing App")
+
+    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+    if uploaded_file is not None:
+        # Read the uploaded image once
+        input_img = Image.open(uploaded_file)
+        st.image(input_img, caption="Input Image", use_column_width=True)
+        
+        # Checkboxes to select processing pipelines
+        oil_option = st.checkbox("Run Oil-Painting")
+        geom_option = st.checkbox("Run Geometrize")
+        
+        # Show parameter widgets for each option
+        if oil_option:
+            st.subheader("Oil-Painting Options")
+            p_value = st.slider("Select parameter (--p)", min_value=1, max_value=10, value=4)
+        if geom_option:
+            st.subheader("Geometrize Options")
+            shape_type = st.selectbox("Select shape type", ("triangle", "rectangle", "ellipse"))
+            shape_count = st.number_input("Number of shapes", min_value=1, value=300, step=1)
+            resize_factor = st.slider("Resize factor (for Geometrize)", 0.25, 0.5, 0.5, step=0.01)
+        
+        if st.button("Process Image"):
+            results = {}
+            
+            # Run Oil-Painting pipeline if selected
+            if oil_option:
+                os.makedirs("uploads", exist_ok=True)
+                # Resize input image to 256x256 for oil painting
+                resized_img = input_img.resize((256, 256))
+                file_path = os.path.join("uploads", uploaded_file.name)
+                resized_img.save(file_path)
+                command = [sys.executable, "Oil-Painting.py", "--f", file_path, "--p", str(p_value)]
+                result = subprocess.run(command, capture_output=True, text=True)
+                if result.returncode == 0:
+                    base_name = os.path.splitext(uploaded_file.name)[0]
+                    output_dir = os.path.join("output", f"{base_name}-p-{p_value}")
+                    final_image_path = os.path.join(output_dir, "Final_Result.png")
+                    if os.path.exists(final_image_path):
+                        oil_img = Image.open(final_image_path)
+                        results["Oil-Painting"] = oil_img
+                    else:
+                        st.error("Oil-Painting processed image not found.")
+                else:
+                    st.error("Error in Oil-Painting process:")
+                    st.text(result.stderr)
+            
+            # Run Geometrize pipeline if selected
+            if geom_option:
+                geom_img = run_geometrize(input_img, shape_type, shape_count, resize_factor)
+                results["Geometrize"] = geom_img
+            
+            # Display results: side-by-side if both are processed, otherwise singly.
+            if results:
+                if len(results) == 2:
+                    col1, col2 = st.columns(2)
+                    if "Oil-Painting" in results:
+                        col1.image(results["Oil-Painting"], caption="Oil-Painting Result", use_column_width=True)
+                    if "Geometrize" in results:
+                        col2.image(results["Geometrize"], caption="Geometrize Result", use_column_width=True)
+                else:
+                    for key, img in results.items():
+                        st.image(img, caption=f"{key} Result", use_column_width=True)
+                        
+if __name__ == "__main__":
+    geometrize_app()
+
