@@ -4,9 +4,9 @@ try:
 except ImportError:
     RerunException = None
 from shape_art_generator import main_page as shape_art_generator_page
-from main import main as image_processing_app  # New import from main.py
 from io import BytesIO
 from PIL import Image
+from geometrize import geometrize_app
 import numpy as np
 import cv2
 from EnDe import decode, encode
@@ -750,7 +750,7 @@ def painter_colors_database():
         show_remove_database_page()
 
 # --------------------------------------------------------------------
-# --- Main Navigation (7 radio buttons plus new pages)
+# --- Main Navigation (6 radio buttons)
 # --------------------------------------------------------------------
 def main():
     st.sidebar.title("Options")
@@ -770,7 +770,7 @@ def main():
         "Recipe Generator", 
         "Colors DataBase",
         "Foogle Man Repo",  # Existing extra page
-        "Image Processing App"  # New page added here
+        "Geometrize"       # <-- New option added here
     ])
     
     if app_mode == "Image Generator":
@@ -787,8 +787,10 @@ def main():
         painter_colors_database()
     elif app_mode == "Foogle Man Repo":
         shape_art_generator_page()
-    elif app_mode == "Image Processing App":  # New condition for the added page
-        image_processing_app()
+    elif app_mode == "Geometrize":
+        # Import and call the geometrize page function
+        from geometrize import geometrize_app
+        geometrize_app()
 
 if __name__ == "__main__":
     main()
