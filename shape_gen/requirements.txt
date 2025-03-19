@@ -1,8 +1,5 @@
-streamlit
-pillow
-numpy
 opencv-python-headless
-threadpool
+torch
+tqdm
 matplotlib
 scipy
-pymixbox
