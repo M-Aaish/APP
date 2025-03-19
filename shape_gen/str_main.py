@@ -6,7 +6,6 @@ except ImportError:
 from shape_art_generator import main_page as shape_art_generator_page
 from io import BytesIO
 from PIL import Image
-from geometrize import geometrize_app
 import numpy as np
 import cv2
 from EnDe import decode, encode
@@ -769,8 +768,7 @@ def main():
         "Colour Merger", 
         "Recipe Generator", 
         "Colors DataBase",
-        "Foogle Man Repo",  # Existing extra page
-        "Geometrize"       # <-- New option added here
+        "Foogle Man Repo"  # <-- New page added here
     ])
     
     if app_mode == "Image Generator":
@@ -785,12 +783,8 @@ def main():
         painter_recipe_generator()
     elif app_mode == "Colors DataBase":
         painter_colors_database()
-    elif app_mode == "Foogle Man Repo":
-        shape_art_generator_page()
-    elif app_mode == "Geometrize":
-        # Import and call the geometrize page function
-        from geometrize import geometrize_app
-        geometrize_app()
+    elif app_mode == "Foogle Man Repo":  # <-- New condition
+        shape_art_generator_page()    
 
 if __name__ == "__main__":
     main()
